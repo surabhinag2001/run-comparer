@@ -93,39 +93,27 @@
     if (d) return d[1];
     return null;
   }
+  // Links copied from Strava's own mobile-app share sheet look like
+  // strava.app.link/xxxxx (a Branch.io short link) rather than
+  // strava.com/activities/<id> — the id isn't in the URL at all, and
+  // resolving it requires following a redirect that Branch only serves
+  // to browser-like requests, which a client-side fetch can't do
+  // (blocked by CORS regardless). See /api/resolve-link.
+  var APP_LINK_RE = /^https:\/\/strava\.app\.link\/[A-Za-z0-9_-]+\/?(\?.*)?$/i;
 
   /* ---------------- state ---------------- */
-  var LS_KEY = 'rc.selected.v1';
-
   function parseShareIdsFromPath(){
     var m = location.pathname.match(/^\/s\/([A-Za-z0-9,]+)\/?$/);
     if (!m) return null;
     return m[1].split(',').map(function(s){ return s.trim(); }).filter(Boolean).slice(0,10);
   }
-  function saveSelectionToLocalStorage(){
-    try {
-      var light = appState.selected.map(function(r){
-        return { id:r.id, name:r.name, sport_type:r.sport_type, start_local:r.start_local, summary:r.summary, snapshotId: r.snapshotId || null };
-      });
-      localStorage.setItem(LS_KEY, JSON.stringify(light));
-    } catch(e){}
-  }
-  function loadSelectionFromLocalStorage(){
-    try {
-      var raw = localStorage.getItem(LS_KEY);
-      if (!raw) return [];
-      var arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr : [];
-    } catch(e){ return []; }
-  }
 
+  // Selection and filters are deliberately in-memory only — a refresh
+  // starts clean rather than restoring a prior session's picks, except
+  // for the share-link path below, which is a distinct flow (reads the
+  // ids straight out of the URL, not out of local state).
   var appState = { selected: [] };
   var initialShareIds = parseShareIdsFromPath();
-  if (!initialShareIds){
-    appState.selected = loadSelectionFromLocalStorage();
-  }
-  // entries loaded straight from a shared link start life already "resolved"
-  // (their data comes with the snapshot fetch, not a live per-id fetch)
   var pendingShareIds = initialShareIds;
 
   // distMax at DIST_SLIDER_MAX means "no upper limit" (so long/ultra runs
@@ -209,7 +197,6 @@
       summary: activity.summary || {}
     }]);
     shareState.url = null;
-    saveSelectionToLocalStorage();
     syncActivityCache();
     render();
   }
@@ -217,18 +204,27 @@
     id = String(id);
     appState.selected = appState.selected.filter(function(r){ return String(r.id)!==id; });
     shareState.url = null;
-    saveSelectionToLocalStorage();
     syncActivityCache();
     render();
   }
   async function addByManualInput(){
     var raw = ui.manualInput.trim();
     var id = extractActivityId(raw);
-    if (!id){ showToast('Enter a valid Strava activity link or ID.'); return; }
-    if (appState.selected.some(function(r){ return String(r.id)===id; })){ showToast('That run is already added.'); return; }
+    if (!id && !APP_LINK_RE.test(raw)){
+      showToast('Enter a valid Strava activity link or ID.');
+      return;
+    }
     if (!auth.authenticated){ showToast('Connect Strava first.'); return; }
     ui.manualLoading = true; render();
     try {
+      if (!id){
+        var resolved = await api('/api/resolve-link?url=' + encodeURIComponent(raw));
+        id = resolved.id;
+      }
+      if (appState.selected.some(function(r){ return String(r.id)===id; })){
+        showToast('That run is already added.');
+        return;
+      }
       var found = await api('/api/activities/' + encodeURIComponent(id));
       if (!isRunType(found.sport_type)){
         showToast('That’s a ' + found.sport_type + ', not a run — this tool only compares runs.');
@@ -239,6 +235,8 @@
     } catch(e){
       if (e.code === 'forbidden'){
         showToast('That activity isn’t visible to your connected Strava account — it needs to be yours (or shared with you).');
+      } else if (!id){
+        showToast('Couldn’t resolve that share link — try the strava.com/activities/... link instead.');
       } else {
         showToast('Couldn’t find that activity — check the link or ID.');
       }
@@ -296,7 +294,6 @@
       resolved.forEach(function(s){
         activityCache.set(String(s.activity_id), { streamsLoading:false, streams:s.streams, streamsErr:null, perfLoading:false, perf:s.perf, perfErr:null });
       });
-      saveSelectionToLocalStorage();
       render();
     } catch(e){
       showToast('Couldn’t load that shared comparison.');
@@ -321,7 +318,6 @@
         r.snapshotId = res.id;
         ids.push(res.id);
       }
-      saveSelectionToLocalStorage();
       shareState.url = location.origin + '/s/' + ids.join(',');
     } catch(e){
       showToast((e && e.message) || 'Couldn’t create a share link.');
@@ -1116,7 +1112,7 @@
   function buildHeader(){
     var header = el('div',{class:'header'});
     var brand = el('div',{class:'brand'});
-    brand.appendChild(el('h1', null, 'Run Comparer'));
+    brand.appendChild(el('h1', null, 'Run Comparer 🐢 🐰'));
     var sub = 'Compare two or more runs from Strava — pace, splits, elevation, and heart rate side by side.';
     if (auth.authenticated && auth.athlete && auth.athlete.first_name){
       sub = 'Hi ' + auth.athlete.first_name + ' — pick any two or more runs below to line them up.';

@@ -1,5 +1,13 @@
 # Run Comparer
 
+## The story
+
+A friend of mine asked why Strava doesn't have a built-in way to compare
+two runs — and pointed out how ridiculous that is, for an app that's
+entirely about running. I didn't have a good answer. So I built it myself.
+
+## What it does
+
 Compare two or more runs from Strava — overview stats, kilometer-by-kilometer
 splits with heart rate, and pace/elevation/heart-rate charts. Anyone who
 visits connects their **own** Strava account (a standard "Connect with
@@ -8,7 +16,7 @@ generate a link to share a comparison with someone else — the person opening
 that link doesn't need a Strava account at all to view it.
 
 This is a standalone Node.js + Express app, meant to be deployed somewhere
-you control (see **Deploying** below) rather than run inside claude.ai.
+you control rather than run inside claude.ai.
 
 ## Why it's built this way
 
@@ -79,38 +87,10 @@ to every visitor.
 
 ## Deploying
 
-You need a host that runs a real, long-lived Node process (not just static
-hosting or serverless functions). This app's database layer is
-[Turso](https://turso.tech) (`@libsql/client`, SQLite-compatible), which
-already provides durable storage — so unlike a raw SQLite file, the host
-itself doesn't need a persistent disk.
-
-**[Render](https://render.com) + Turso** is the genuinely free combination:
-
-1. Create a free Turso database: `turso db create run-comparer`, then
-   `turso db show run-comparer --url` and `turso db tokens create
-   run-comparer` to get its URL and an auth token.
-2. Push this project to a GitHub repo.
-3. Create a free Render **Web Service** connected to that repo (build
-   command `npm install`, start command `npm start`).
-4. Set environment variables in Render's dashboard: `STRAVA_CLIENT_ID`,
-   `STRAVA_CLIENT_SECRET`, `DB_URL` (the `libsql://...` URL from step 1),
-   `DB_AUTH_TOKEN` (the token from step 1), leave `MOCK_STRAVA` unset.
-5. Once deployed, go back to your Strava API application settings
-   (https://www.strava.com/settings/api) and set "Authorization Callback
-   Domain" to your deployed domain (e.g. `run-comparer.onrender.com`,
-   no `https://` or path) — Strava rejects OAuth callbacks that don't match
-   this.
-6. Visit your deployed URL and try connecting.
-
-Render's free web services spin down after 15 minutes of inactivity (a
-visit after idle takes a few seconds to wake back up) — the tradeoff for
-being free with no card required. Turso's free tier includes 5GB storage,
-which is far more than logged-in-athlete records and shared snapshots will
-ever need here.
-
-Hosting pricing and free-tier details change often — worth double-checking
-current terms on the provider's own pricing page before committing.
+Deployed on [Render](https://render.com) (web service) with
+[Turso](https://turso.tech) (`@libsql/client`, SQLite-compatible) as the
+database — Render's free tier has no persistent disk, so Turso is what
+makes logged-in-athlete records and shared snapshots survive a redeploy.
 
 ## Project structure
 

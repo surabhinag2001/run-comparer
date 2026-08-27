@@ -60,6 +60,38 @@ router.get('/activities', requireAuth, async (req, res) => {
   } catch (e) { handleStravaError(res, e); }
 });
 
+// Resolves a Strava mobile-app share link (strava.app.link/xxxxx, a
+// Branch.io short link) to the activity id it points at. These don't
+// carry the id in the URL itself — Branch's server only reveals the real
+// strava.com destination via a 307 redirect, and only to requests that
+// carry a real-looking User-Agent (a missing one gets a 200 HTML
+// fallback page instead, which is what breaks this when a browser tries
+// to resolve it directly client-side — that request is also blocked by
+// CORS regardless). The hostname is pinned to a fixed literal so this
+// can't be used as an open redirect-following proxy.
+const APP_LINK_RE = /^https:\/\/strava\.app\.link\/[A-Za-z0-9_-]+\/?(\?.*)?$/i;
+
+router.get('/resolve-link', requireAuth, async (req, res) => {
+  const url = String(req.query.url || '');
+  if (!APP_LINK_RE.test(url)) {
+    return res.status(400).json({ error: { code: 'bad_request', message: 'Not a recognized Strava share link.' } });
+  }
+  try {
+    const resp = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'manual',
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+    });
+    const location = resp.headers.get('location') || '';
+    const m = location.match(/strava\.com\/activities\/(\d+)/i);
+    if (!m) return res.status(404).json({ error: { code: 'not_found', message: 'That link didn’t resolve to an activity.' } });
+    res.json({ id: m[1] });
+  } catch (e) {
+    console.error('resolve-link failed:', e);
+    res.status(502).json({ error: { code: 'resolve_failed', message: 'Couldn’t resolve that link right now.' } });
+  }
+});
+
 // Look up a single activity by id — used for "paste a link/ID". Strava
 // itself enforces that this only succeeds for an activity the logged-in
 // athlete owns (or has been granted access to); anything else 403s.

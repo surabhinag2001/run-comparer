@@ -65,6 +65,21 @@
     var v = paceMinutesFromSpeed(mps);
     return v==null ? '—' : (fmtPaceMin(v)+' /km');
   }
+  function weatherIcon(code){
+    if (code === 0) return '☀️';
+    if (code === 1 || code === 2) return '⛅';
+    if (code === 3) return '☁️';
+    if (code === 45 || code === 48) return '🌫️';
+    if (code >= 51 && code <= 57) return '🌦️';
+    if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return '🌧️';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return '🌨️';
+    if (code >= 95) return '⛈️';
+    return '🌡️';
+  }
+  function fmtWeather(w){
+    if (!w || !w.available) return '—';
+    return weatherIcon(w.weather_code) + ' ' + Math.round(w.temperature_c) + '°C · ' + w.description;
+  }
   function relDate(iso){
     if (!iso) return 'date unknown';
     var d = new Date(iso);
@@ -249,7 +264,11 @@
   function ensureLiveEntry(id){
     id = String(id);
     if (activityCache.has(id)) return activityCache.get(id);
-    var entry = { streamsLoading:true, streams:null, streamsErr:null, perfLoading:true, perf:null, perfErr:null };
+    var entry = {
+      streamsLoading:true, streams:null, streamsErr:null,
+      perfLoading:true, perf:null, perfErr:null,
+      weatherLoading:true, weather:null, weatherErr:null
+    };
     activityCache.set(id, entry);
     api('/api/activities/' + encodeURIComponent(id) + '/streams').then(function(streams){
       entry.streams = streams; entry.streamsErr = null;
@@ -261,6 +280,11 @@
     }).catch(function(e){
       entry.perfErr = e;
     }).finally(function(){ entry.perfLoading = false; render(); });
+    api('/api/activities/' + encodeURIComponent(id) + '/weather').then(function(weather){
+      entry.weather = weather; entry.weatherErr = null;
+    }).catch(function(e){
+      entry.weatherErr = e;
+    }).finally(function(){ entry.weatherLoading = false; render(); });
     return entry;
   }
   function syncActivityCache(){
@@ -694,7 +718,8 @@
       {label:'Avg heart rate', get:function(r){ return (r.perf && r.perf.average_heartrate) || null; }, fmt:function(v){ return v?Math.round(v)+' bpm':'—'; }},
       {label:'Max heart rate', get:function(r){ return (r.perf && r.perf.max_heartrate) || null; }, fmt:function(v){ return v?Math.round(v)+' bpm':'—'; }},
       {label:'Calories', get:function(r){ return (r.perf && r.perf.calories) || r.summary.total_calories || null; }, fmt:function(v){ return v?Math.round(v):'—'; }},
-      {label:'Relative effort', get:function(r){ return (r.summary.relative_effort!=null) ? r.summary.relative_effort : null; }, fmt:function(v){ return v!=null?v:'—'; }}
+      {label:'Relative effort', get:function(r){ return (r.summary.relative_effort!=null) ? r.summary.relative_effort : null; }, fmt:function(v){ return v!=null?v:'—'; }},
+      {label:'Weather', get:function(r){ return r.weather || null; }, fmt:fmtWeather}
     ];
     rowsDef.forEach(function(def){
       var vals = runs.map(def.get);

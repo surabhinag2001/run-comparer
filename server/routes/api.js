@@ -1,6 +1,7 @@
 import express from 'express';
 import { getSessionAthlete, createSnapshot, getSnapshot } from '../db.js';
 import { listActivities, getActivity, getActivityStreams, getActivityPerformance, StravaApiError } from '../strava.js';
+import { getHistoricalWeather } from '../weather.js';
 import { SESSION_COOKIE } from './auth.js';
 
 const router = express.Router();
@@ -113,6 +114,24 @@ router.get('/activities/:id/performance', requireAuth, async (req, res) => {
   try {
     const perf = await getActivityPerformance(req.athlete.id, req.params.id);
     res.json(perf);
+  } catch (e) { handleStravaError(res, e); }
+});
+
+// Weather at the run's start location/time — a separate historical
+// lookup (see weather.js), not something Strava's own API provides.
+// start_latlng comes back missing/null for indoor/manual entries and for
+// athletes who've set up a privacy zone around that location; either way
+// this just reports "not available" rather than erroring.
+router.get('/activities/:id/weather', requireAuth, async (req, res) => {
+  try {
+    const a = await getActivity(req.athlete.id, req.params.id);
+    const latlng = a.start_latlng;
+    if (!Array.isArray(latlng) || latlng.length !== 2) {
+      return res.json({ available: false });
+    }
+    const weather = await getHistoricalWeather({ lat: latlng[0], lon: latlng[1], startDateUtc: a.start_date });
+    if (!weather) return res.json({ available: false });
+    res.json({ available: true, ...weather });
   } catch (e) { handleStravaError(res, e); }
 });
 

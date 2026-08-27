@@ -44,11 +44,17 @@ function genRawStream(opts){
 export const MOCK_ATHLETE = { id: 999001, firstname: 'Test', lastname: 'Runner' };
 
 export const MOCK_ACTIVITIES = [
+  // start_latlng + start_date (UTC) are present here so MOCK_STRAVA=1
+  // can still exercise a real weather lookup — that call goes to
+  // Open-Meteo, a separate free/no-key service, not to Strava, so mocking
+  // Strava doesn't need to mock it too.
   { id: 700000001, name: 'Sunday long run', sport_type: 'Run', start_date_local: '2026-08-24T08:00:00Z',
+    start_date: '2026-08-24T08:00:00Z', start_latlng: [43.6532, -79.3832],
     distance: 12030, moving_time: 3600, elapsed_time: 3780, total_elevation_gain: 88,
     average_speed: 3.34, max_speed: 4.1, calories: 720, suffer_score: 61,
     average_heartrate: 148, max_heartrate: 171, has_heartrate: true },
   { id: 700000002, name: 'Tempo intervals', sport_type: 'Run', start_date_local: '2026-08-20T18:15:00Z',
+    start_date: '2026-08-20T18:15:00Z', start_latlng: [51.5072, -0.1276],
     distance: 8050, moving_time: 2100, elapsed_time: 2160, total_elevation_gain: 30,
     average_speed: 3.83, max_speed: 5.2, calories: 540, suffer_score: 78,
     average_heartrate: 162, max_heartrate: 181, has_heartrate: true },
@@ -57,6 +63,7 @@ export const MOCK_ACTIVITIES = [
     average_speed: 1.39, max_speed: 2.0, calories: 120, suffer_score: 3 },
   // Older run, deliberately far enough back to land on a later page —
   // used to exercise the "search reaches into older history" picker flow.
+  // No start_latlng, on purpose: exercises the "no location data" path.
   { id: 700000004, name: 'Spring 10k race', sport_type: 'Run', start_date_local: '2026-05-10T09:00:00Z',
     distance: 10210, moving_time: 2820, elapsed_time: 2850, total_elevation_gain: 45,
     average_speed: 3.62, max_speed: 4.6, calories: 610, suffer_score: 70,

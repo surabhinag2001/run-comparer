@@ -38,18 +38,7 @@ API. What *is* possible, and what this app does:
 Nobody's Strava credentials are ever shared with anybody else, and the only
 data ever stored is what a person explicitly chose to share via that link.
 
-## Before you build/deploy: read Strava's API Agreement
 
-Strava tightened its Developer Agreement in November 2024 (restrictions
-around how third-party apps may display/store athlete data, and a ban on
-AI/ML training use) and has continued adjusting API access terms since.
-This app only displays data back to the person who authorized it (and to
-whoever they explicitly choose to share a link with) and doesn't do
-anything with the data beyond that — but you should read the current
-agreement yourself at https://www.strava.com/legal/api and satisfy yourself
-it's compliant before deploying this somewhere other people will use. This
-is a terms-of-service judgment call for you to make, not something built
-into the code.
 
 ## Local setup
 

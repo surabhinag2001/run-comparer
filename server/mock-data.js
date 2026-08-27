@@ -54,12 +54,26 @@ export const MOCK_ACTIVITIES = [
     average_heartrate: 162, max_heartrate: 181, has_heartrate: true },
   { id: 700000003, name: 'Evening walk', sport_type: 'Walk', start_date_local: '2026-08-19T20:00:00Z',
     distance: 2500, moving_time: 1800, elapsed_time: 1900, total_elevation_gain: 5,
-    average_speed: 1.39, max_speed: 2.0, calories: 120, suffer_score: 3 }
+    average_speed: 1.39, max_speed: 2.0, calories: 120, suffer_score: 3 },
+  // Older run, deliberately far enough back to land on a later page —
+  // used to exercise the "search reaches into older history" picker flow.
+  { id: 700000004, name: 'Spring 10k race', sport_type: 'Run', start_date_local: '2026-05-10T09:00:00Z',
+    distance: 10210, moving_time: 2820, elapsed_time: 2850, total_elevation_gain: 45,
+    average_speed: 3.62, max_speed: 4.6, calories: 610, suffer_score: 70,
+    average_heartrate: 167, max_heartrate: 184, has_heartrate: true },
+  // Second ~10K run, further back still — with the two of them spread
+  // across different pages, this exercises "don't stop scanning after
+  // the first distance-filter match, keep going for every match".
+  { id: 700000005, name: 'Winter 10k tempo', sport_type: 'Run', start_date_local: '2025-12-02T07:30:00Z',
+    distance: 9870, moving_time: 2760, elapsed_time: 2790, total_elevation_gain: 25,
+    average_speed: 3.58, max_speed: 4.4, calories: 590, suffer_score: 65,
+    average_heartrate: 160, max_heartrate: 179, has_heartrate: true }
 ];
 
 const STREAMS_BY_ID = {
   700000001: genRawStream({ n: 200, distTotal: 12030, baseHr: 148, stopAtFrac: 0.3, stopSeconds: 100 }),
-  700000002: genRawStream({ n: 150, distTotal: 8050, baseHr: 162 })
+  700000002: genRawStream({ n: 150, distTotal: 8050, baseHr: 162 }),
+  700000004: genRawStream({ n: 170, distTotal: 10210, baseHr: 167 })
 };
 
 export function mockGetActivity(id){

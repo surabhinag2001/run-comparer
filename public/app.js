@@ -128,8 +128,28 @@
   // (their data comes with the snapshot fetch, not a live per-id fetch)
   var pendingShareIds = initialShareIds;
 
-  var ui = { search:'', manualInput:'', manualLoading:false };
-  var recent = { payload:null, error:null, loading:false };
+  // distMax at DIST_SLIDER_MAX means "no upper limit" (so long/ultra runs
+  // aren't silently excluded just because they're past the slider's end).
+  var DIST_SLIDER_MAX = 50;
+  var DIST_PRESETS = [
+    { label:'5K', min:4.5, max:5.5 },
+    { label:'10K', min:9.5, max:10.5 },
+    { label:'Half', min:20.6, max:21.6 },
+    { label:'Marathon', min:41.7, max:42.7 }
+  ];
+  var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var ui = { search:'', manualInput:'', manualLoading:false, monthNum:'', year:'', distMin:0, distMax:DIST_SLIDER_MAX };
+  // activities accumulate across pages. Whenever any filter is active, the
+  // picker keeps auto-loading further pages until the account's full
+  // history is exhausted (not just until the first match appears) — so
+  // e.g. selecting "Half" surfaces every half marathon ever run, not just
+  // the most recent one. Once exhausted, all activities are cached
+  // client-side, so switching filters afterward is instant with no
+  // further requests. scanBlocked pauses that auto-loop after a fetch
+  // error (distinct from exhausted, which means "reached the real end of
+  // history") until the user retries explicitly.
+  var recent = { activities:[], error:null, loading:false, page:0, exhausted:false, loadingMore:false, scanBlocked:false };
+  var ACTIVITIES_PER_PAGE = 200; // Strava's per_page cap — fewer round trips for a full-history scan
   var auth = { checked:false, authenticated:false, athlete:null };
   var activityCache = new Map();
   var toasts = []; var toastSeq = 0;
@@ -320,12 +340,51 @@
   async function loadRecent(){
     recent.loading = true; render();
     try {
-      var res = await api('/api/activities');
-      recent.payload = res; recent.error = null;
+      var res = await api('/api/activities?per_page=' + ACTIVITIES_PER_PAGE);
+      recent.activities = res.activities || [];
+      recent.page = 1;
+      recent.exhausted = !res.has_more;
+      recent.error = null;
     } catch(e){
       recent.error = e;
     } finally {
       recent.loading = false; render();
+    }
+  }
+  // Background page loads (the auto-scan-while-filtering chain, and the
+  // manual "Load older runs" button) refresh only the .activity-list node
+  // in place rather than the global render(). Two reasons: (1) this can
+  // fire from *inside* an in-progress render() call (buildPickerCard
+  // triggers the first scan step synchronously while building the list),
+  // and calling the global render() reentrantly there clears root and
+  // appends a second whole shell before the outer call reaches its own
+  // root.appendChild — producing duplicated DOM. (2) even outside that,
+  // rebuilding the whole page on a background fetch tears down the
+  // search/month/year/slider controls, snapping shut any native <select>
+  // dropdown the user has open at that exact moment.
+  function refreshListInPlace(){
+    var list = document.querySelector('.activity-list');
+    if (list) renderActivityList(list);
+  }
+  async function loadMoreActivities(){
+    if (recent.loadingMore || recent.exhausted) return;
+    recent.loadingMore = true; recent.scanBlocked = false; refreshListInPlace();
+    try {
+      var res = await api('/api/activities?per_page=' + ACTIVITIES_PER_PAGE + '&page=' + (recent.page + 1));
+      var got = res.activities || [];
+      recent.activities = recent.activities.concat(got);
+      recent.page = recent.page + 1;
+      recent.exhausted = !res.has_more || got.length === 0;
+      recent.error = null;
+    } catch(e){
+      // A fetch failure isn't the same as reaching the real end of
+      // history — pause the auto-loop (scanBlocked) rather than marking
+      // exhausted, so a "Retry" can pick back up instead of the picker
+      // silently believing it already checked everything.
+      recent.error = e;
+      recent.scanBlocked = true;
+    } finally {
+      recent.loadingMore = false; refreshListInPlace();
     }
   }
   async function init(){
@@ -759,8 +818,109 @@
         el('div',{class:'activity-name'}, a.name || ('Activity '+a.id)),
         el('div',{class:'activity-meta'}, relDate(a.start_local)+' · '+fmtKm(a.summary?a.summary.distance:null)+' · '+pace)
       ),
-      el('button',{class:'add-btn', type:'button', disabled:already, title: already?'Added':'Add to comparison', onclick:function(){ if (!already) addActivity(a); }}, already?'✓':'+')
+      el('button',{class:'add-btn'+(already?' add-btn-active':''), type:'button', title: already?'Remove from comparison':'Add to comparison', onclick:function(){ already ? removeActivity(a.id) : addActivity(a); }}, already?'✓':'+')
     );
+  }
+  function distanceFilterActive(){ return ui.distMin > 0 || ui.distMax < DIST_SLIDER_MAX; }
+  function monthFilterActive(){ return !!ui.monthNum || !!ui.year; }
+  function filtersActive(){ return !!ui.search || monthFilterActive() || distanceFilterActive(); }
+  function distLabel(minV, maxV){
+    var maxTxt = maxV >= DIST_SLIDER_MAX ? (DIST_SLIDER_MAX.toFixed(0) + '+ km') : (maxV.toFixed(1) + ' km');
+    return minV.toFixed(1) + ' km – ' + maxTxt;
+  }
+  function passesMonth(a){
+    if (!monthFilterActive()) return true;
+    if (!a.start_local) return false;
+    if (ui.year && a.start_local.slice(0,4) !== ui.year) return false;
+    if (ui.monthNum && a.start_local.slice(5,7) !== ui.monthNum) return false;
+    return true;
+  }
+  function passesDistance(a){
+    if (!distanceFilterActive()) return true;
+    var km = (a.summary && a.summary.distance != null) ? a.summary.distance/1000 : null;
+    if (km == null) return false;
+    if (km < ui.distMin - 1e-9) return false;
+    if (ui.distMax < DIST_SLIDER_MAX && km > ui.distMax + 1e-9) return false;
+    return true;
+  }
+  // Builds (or refreshes) just the activity list into an existing
+  // container node — used both for the initial build inside
+  // buildPickerCard() and for scoped background refreshes via
+  // refreshListInPlace(), which must never touch sibling DOM (the
+  // search/month/year/slider controls) or call the global render().
+  //
+  // Reentrancy guard: kicking off a scan step below can synchronously
+  // reach loadMoreActivities() -> refreshListInPlace() -> back into this
+  // same function on the same list node (once it's already attached to
+  // the document, which is true for every scan iteration after the
+  // first). Without this guard, that nested call appends its own note
+  // and the outer call — oblivious that list already got a fresh child —
+  // appends a second one right after, producing the duplicated
+  // "searching further back" rows. The outer (already in-progress) call
+  // always finishes and reflects the latest state correctly, so the
+  // nested attempt is safe to just skip.
+  var listRenderBusy = false;
+  function renderActivityList(list){
+    if (listRenderBusy) return;
+    listRenderBusy = true;
+    try {
+      renderActivityListInner(list);
+    } finally {
+      listRenderBusy = false;
+    }
+  }
+  function renderActivityListInner(list){
+    list.innerHTML = '';
+    if (recent.error) list.appendChild(errorNote(recent.error));
+    if (recent.activities.length || !recent.loading){
+      var runs = recent.activities.filter(function(a){ return isRunType(a.sport_type); });
+      var filtered = runs.filter(function(a){
+        if (ui.search && a.name && a.name.toLowerCase().indexOf(ui.search.toLowerCase())===-1) return false;
+        if (!passesMonth(a)) return false;
+        if (!passesDistance(a)) return false;
+        return true;
+      });
+      var active = filtersActive();
+      // Whenever a filter is active, keep loading further pages until the
+      // account's real history is exhausted — not just until the first
+      // match turns up — so e.g. selecting "Half" surfaces every half
+      // marathon ever run, not just the most recent one. Once exhausted,
+      // everything is cached in recent.activities, so later filter
+      // changes are instant with no further requests.
+      if (active && !recent.exhausted && !recent.loadingMore && !recent.scanBlocked){
+        loadMoreActivities();
+      }
+      if (!filtered.length){
+        if (active && recent.loadingMore){
+          list.appendChild(el('div',{class:'empty-note scan-spinner-row'}, el('span',{class:'spinner'})));
+        } else {
+          var note = !active ? 'No runs found in your recent activities.'
+            : recent.scanBlocked ? 'Couldn’t reach Strava while searching further back.'
+            : recent.exhausted ? 'No runs match these filters anywhere in your Strava history.'
+            : 'No runs match these filters in your last ' + recent.activities.length + ' activities.';
+          list.appendChild(el('div',{class:'empty-note'}, note));
+        }
+      }
+      filtered.slice(0,80).forEach(function(a){ list.appendChild(activityRow(a)); });
+      if (active && filtered.length){
+        if (recent.loadingMore){
+          list.appendChild(el('div',{class:'scan-status-row'}, el('span',{class:'spinner'}), 'Still searching your full history for more matches…'));
+        } else if (recent.exhausted){
+          list.appendChild(el('div',{class:'scan-status-row'}, 'Found ' + filtered.length + (filtered.length===1?' match':' matches') + ' across your full Strava history.'));
+        }
+      }
+      if (recent.scanBlocked){
+        list.appendChild(el('button',{class:'btn', type:'button', onclick:function(){
+          recent.scanBlocked = false; recent.error = null; loadMoreActivities();
+        }}, 'Retry'));
+      }
+      if (!active && !recent.exhausted){
+        list.appendChild(el('button',{class:'btn load-more-btn', type:'button', disabled:recent.loadingMore, onclick:loadMoreActivities},
+          recent.loadingMore ? el('span',{class:'spinner'}) : 'Load older runs'));
+      }
+    } else {
+      list.appendChild(loadingRow('Loading your recent runs…'));
+    }
   }
   function buildPickerCard(){
     var card = el('div',{class:'card'});
@@ -782,23 +942,71 @@
     );
     card.appendChild(searchRow);
 
-    var activities = recent.payload && recent.payload.activities ? recent.payload.activities : null;
+    var thisYear = new Date().getFullYear();
+    var monthSelect = el('select',{class:'select-input', onchange:function(e){ ui.monthNum = e.target.value; render(); }},
+      el('option',{value:''}, 'Month'),
+      MONTH_NAMES.map(function(name, idx){
+        var val = pad(idx+1);
+        return el('option',{value:val, selected: ui.monthNum===val}, name);
+      })
+    );
+    var yearSelect = el('select',{class:'select-input', onchange:function(e){ ui.year = e.target.value; render(); }},
+      el('option',{value:''}, 'Year'),
+      Array.from({length:21}, function(_, i){ return String(thisYear - i); }).map(function(y){
+        return el('option',{value:y, selected: ui.year===y}, y);
+      })
+    );
+    var distLabelEl = el('span',{class:'dist-label'}, distLabel(ui.distMin, ui.distMax));
+    var minSlider = el('input',{class:'range-min', type:'range', min:0, max:DIST_SLIDER_MAX, step:0.5, value:ui.distMin,
+      oninput:function(e){
+        var v = Math.min(parseFloat(e.target.value), ui.distMax);
+        e.target.value = v;
+        distLabelEl.textContent = distLabel(v, ui.distMax);
+      },
+      onchange:function(e){ ui.distMin = Math.min(parseFloat(e.target.value), ui.distMax); render(); }
+    });
+    var maxSlider = el('input',{class:'range-max', type:'range', min:0, max:DIST_SLIDER_MAX, step:0.5, value:ui.distMax,
+      oninput:function(e){
+        var v = Math.max(parseFloat(e.target.value), ui.distMin);
+        e.target.value = v;
+        distLabelEl.textContent = distLabel(ui.distMin, v);
+      },
+      onchange:function(e){ ui.distMax = Math.max(parseFloat(e.target.value), ui.distMin); render(); }
+    });
+    var presetsRow = el('div',{class:'dist-presets'},
+      DIST_PRESETS.map(function(p){
+        var active = Math.abs(ui.distMin-p.min)<1e-9 && Math.abs(ui.distMax-p.max)<1e-9;
+        return el('button',{class:'chip'+(active?' chip-active':''), type:'button', onclick:function(){
+          ui.distMin = p.min; ui.distMax = p.max; render();
+        }}, p.label);
+      })
+    );
+    var clearBtn = el('button',{class:'chip chip-sm', type:'button', disabled: !(monthFilterActive() || distanceFilterActive()), onclick:function(){
+      ui.monthNum = ''; ui.year = ''; ui.distMin = 0; ui.distMax = DIST_SLIDER_MAX; render();
+    }}, 'Clear');
+    var filtersRow = el('div',{class:'filters-row'},
+      el('div',{class:'filters-header'},
+        el('span',{class:'filter-label'}, 'Filters'),
+        clearBtn
+      ),
+      el('div',{class:'filter-group'},
+        el('label',{class:'filter-label'}, 'Month'),
+        el('div',{class:'month-year-row'},
+          el('div',{class:'select-wrap'}, monthSelect),
+          el('div',{class:'select-wrap'}, yearSelect)
+        )
+      ),
+      el('div',{class:'filter-group filter-group-dist'},
+        el('label',{class:'filter-label'}, 'Distance', distLabelEl),
+        presetsRow,
+        el('div',{class:'dual-range'}, minSlider, maxSlider)
+      )
+    );
+    card.appendChild(filtersRow);
+
     var list = el('div',{class:'activity-list'});
-    if (recent.error) list.appendChild(errorNote(recent.error));
-    if (activities){
-      var runs = activities.filter(function(a){ return isRunType(a.sport_type); });
-      var filtered = runs.filter(function(a){
-        if (ui.search && a.name && a.name.toLowerCase().indexOf(ui.search.toLowerCase())===-1) return false;
-        return true;
-      });
-      if (!filtered.length){
-        list.appendChild(el('div',{class:'empty-note'}, ui.search ? 'No runs match your search.' : 'No runs found in your recent activities.'));
-      }
-      filtered.slice(0,80).forEach(function(a){ list.appendChild(activityRow(a)); });
-    } else if (!recent.error){
-      list.appendChild(loadingRow('Loading your recent runs…'));
-    }
     card.appendChild(list);
+    renderActivityList(list);
 
     var manualRow = el('div',{class:'manual-add'},
       el('input',{class:'text-input', id:'manual-input', type:'text', placeholder:'Or paste a Strava activity link / ID (yours)', value:ui.manualInput, oninput:function(e){

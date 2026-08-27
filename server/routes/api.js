@@ -54,8 +54,9 @@ function summarizeActivity(a) {
 router.get('/activities', requireAuth, async (req, res) => {
   try {
     const perPage = Math.min(Number(req.query.per_page) || 60, 200);
-    const activities = await listActivities(req.athlete.id, { perPage });
-    res.json({ activities: activities.map(summarizeActivity) });
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const activities = await listActivities(req.athlete.id, { perPage, page });
+    res.json({ activities: activities.map(summarizeActivity), page, has_more: activities.length === perPage });
   } catch (e) { handleStravaError(res, e); }
 });
 

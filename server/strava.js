@@ -116,9 +116,12 @@ function mockWrap(fn) {
   catch (e) { throw new StravaApiError(e.message || 'Not found.', e.status || 404, e.status === 404 ? 'not_found' : 'upstream_error'); }
 }
 
-export function listActivities(athleteId, { perPage = 60 } = {}) {
-  if (MOCK) return mockWrap(() => MOCK_ACTIVITIES.slice(0, perPage));
-  return callStravaApi(athleteId, `/athlete/activities?per_page=${perPage}`);
+export function listActivities(athleteId, { perPage = 60, page = 1 } = {}) {
+  if (MOCK) return mockWrap(() => {
+    const start = (page - 1) * perPage;
+    return MOCK_ACTIVITIES.slice(start, start + perPage);
+  });
+  return callStravaApi(athleteId, `/athlete/activities?per_page=${perPage}&page=${page}`);
 }
 
 export function getActivity(athleteId, activityId) {

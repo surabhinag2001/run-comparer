@@ -75,13 +75,13 @@ async function refreshToken(refresh_token) {
 // Returns a valid access token for this athlete, refreshing if it's
 // expired or about to expire (60s buffer).
 export async function getValidAccessToken(athleteId) {
-  const athlete = getAthlete(athleteId);
+  const athlete = await getAthlete(athleteId);
   if (!athlete) return null;
   if (MOCK) return athlete.access_token;
   const now = Math.floor(Date.now() / 1000);
   if (athlete.expires_at - now > 60) return athlete.access_token;
   const refreshed = await refreshToken(athlete.refresh_token);
-  updateAthleteTokens(athleteId, {
+  await updateAthleteTokens(athleteId, {
     access_token: refreshed.access_token,
     refresh_token: refreshed.refresh_token,
     expires_at: refreshed.expires_at

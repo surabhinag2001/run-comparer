@@ -47,8 +47,8 @@ into the code.
 
 ## Local setup
 
-Requires Node.js 22.5+ (uses the built-in `node:sqlite` module — no
-database server to install).
+Requires Node.js 18+. Local dev uses a plain SQLite file via
+`@libsql/client` — no database server or account to set up.
 
 ```bash
 npm install
@@ -80,35 +80,34 @@ to every visitor.
 ## Deploying
 
 You need a host that runs a real, long-lived Node process (not just static
-hosting or serverless functions) and — since this app uses a local SQLite
-file to remember logged-in athletes and shared snapshots — ideally a
-**persistent disk** so that data survives restarts/redeploys.
+hosting or serverless functions). This app's database layer is
+[Turso](https://turso.tech) (`@libsql/client`, SQLite-compatible), which
+already provides durable storage — so unlike a raw SQLite file, the host
+itself doesn't need a persistent disk.
 
-**[Koyeb](https://www.koyeb.com)** is the easiest genuinely-free option
-right now: its free tier includes an always-on web service *and* 2GB of
-persistent storage, which is the combination this app needs. Connect your
-GitHub repo, set the environment variables below in its dashboard, and
-mount the included volume at the path you set `DB_PATH` to (e.g. `/data`,
-with `DB_PATH=/data/app.db`).
+**[Render](https://render.com) + Turso** is the genuinely free combination:
 
-**[Render](https://render.com)** is the more polished/beginner-friendly
-option if you don't mind a small paid tier — its free tier can't attach a
-persistent disk, so `Starter` (~$7/mo) plus a small disk add-on is the
-realistic setup there.
-
-Either way:
-
-1. Push this project to a GitHub repo.
-2. Connect the repo in your host's dashboard.
-3. Set environment variables: `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`,
-   `DB_PATH` (pointing at your persistent volume's mount path), leave
-   `MOCK_STRAVA` unset.
-4. Once deployed, go back to your Strava API application settings
+1. Create a free Turso database: `turso db create run-comparer`, then
+   `turso db show run-comparer --url` and `turso db tokens create
+   run-comparer` to get its URL and an auth token.
+2. Push this project to a GitHub repo.
+3. Create a free Render **Web Service** connected to that repo (build
+   command `npm install`, start command `npm start`).
+4. Set environment variables in Render's dashboard: `STRAVA_CLIENT_ID`,
+   `STRAVA_CLIENT_SECRET`, `DB_URL` (the `libsql://...` URL from step 1),
+   `DB_AUTH_TOKEN` (the token from step 1), leave `MOCK_STRAVA` unset.
+5. Once deployed, go back to your Strava API application settings
    (https://www.strava.com/settings/api) and set "Authorization Callback
-   Domain" to your deployed domain (e.g. `run-comparer.yourdomain.com`,
+   Domain" to your deployed domain (e.g. `run-comparer.onrender.com`,
    no `https://` or path) — Strava rejects OAuth callbacks that don't match
    this.
-5. Visit your deployed URL and try connecting.
+6. Visit your deployed URL and try connecting.
+
+Render's free web services spin down after 15 minutes of inactivity (a
+visit after idle takes a few seconds to wake back up) — the tradeoff for
+being free with no card required. Turso's free tier includes 5GB storage,
+which is far more than logged-in-athlete records and shared snapshots will
+ever need here.
 
 Hosting pricing and free-tier details change often — worth double-checking
 current terms on the provider's own pricing page before committing.

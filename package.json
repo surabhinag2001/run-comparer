@@ -4,7 +4,7 @@
   "description": "Compare two or more Strava runs. Anyone can connect their own Strava account, pick runs, and share a comparison link with someone else without either of you sharing credentials.",
   "type": "module",
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=18.0.0"
   },
   "scripts": {
     "start": "node server/index.js",
@@ -13,6 +13,7 @@
   "dependencies": {
     "express": "^4.19.2",
     "dotenv": "^16.4.5",
-    "cookie-parser": "^1.4.6"
+    "cookie-parser": "^1.4.6",
+    "@libsql/client": "^0.17.4"
   }
 }

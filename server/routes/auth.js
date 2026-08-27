@@ -17,9 +17,9 @@ function redirectUriFor(req) {
   return `${proto}://${host}/auth/strava/callback`;
 }
 
-router.get('/strava/login', (req, res) => {
-  pruneOauthStates();
-  const state = createOauthState();
+router.get('/strava/login', async (req, res) => {
+  await pruneOauthStates();
+  const state = await createOauthState();
   if (MOCK) {
     // Skip the real Strava consent screen entirely — go straight to our
     // own callback with a fake code, exactly like Strava would redirect
@@ -35,7 +35,7 @@ router.get('/strava/callback', async (req, res) => {
   if (error) {
     return res.redirect('/?auth_error=' + encodeURIComponent(String(error)));
   }
-  if (!state || !consumeOauthState(String(state))) {
+  if (!state || !(await consumeOauthState(String(state)))) {
     return res.redirect('/?auth_error=invalid_state');
   }
   if (!code) {
@@ -44,7 +44,7 @@ router.get('/strava/callback', async (req, res) => {
   try {
     const token = await exchangeCodeForToken(String(code));
     const athlete = token.athlete || {};
-    upsertAthlete({
+    await upsertAthlete({
       id: athlete.id,
       first_name: athlete.firstname,
       last_name: athlete.lastname,
@@ -52,7 +52,7 @@ router.get('/strava/callback', async (req, res) => {
       refresh_token: token.refresh_token,
       expires_at: token.expires_at
     });
-    const sessionToken = createSession(athlete.id);
+    const sessionToken = await createSession(athlete.id);
     res.cookie(SESSION_COOKIE, sessionToken, {
       httpOnly: true,
       sameSite: 'lax',
@@ -66,9 +66,9 @@ router.get('/strava/callback', async (req, res) => {
   }
 });
 
-router.post('/logout', (req, res) => {
+router.post('/logout', async (req, res) => {
   const token = req.cookies[SESSION_COOKIE];
-  if (token) deleteSession(token);
+  if (token) await deleteSession(token);
   res.clearCookie(SESSION_COOKIE);
   res.json({ ok: true });
 });

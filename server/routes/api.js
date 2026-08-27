@@ -8,9 +8,9 @@ const router = express.Router();
 const RUN_TYPES = ['Run', 'TrailRun', 'VirtualRun'];
 function isRunType(sportType) { return RUN_TYPES.indexOf(sportType) !== -1; }
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const token = req.cookies[SESSION_COOKIE];
-  const athlete = getSessionAthlete(token);
+  const athlete = await getSessionAthlete(token);
   if (!athlete) return res.status(401).json({ error: { code: 'not_connected', message: 'Not connected to Strava.' } });
   req.athlete = athlete;
   next();
@@ -25,9 +25,9 @@ function handleStravaError(res, e) {
 }
 
 // Who's logged in, if anyone. Never requires auth itself.
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   const token = req.cookies[SESSION_COOKIE];
-  const athlete = getSessionAthlete(token);
+  const athlete = await getSessionAthlete(token);
   if (!athlete) return res.json({ authenticated: false });
   res.json({ authenticated: true, athlete: { id: athlete.id, first_name: athlete.first_name, last_name: athlete.last_name } });
 });
@@ -88,7 +88,7 @@ router.get('/activities/:id/performance', requireAuth, async (req, res) => {
 // data you were able to fetch, i.e. your own runs). Reading one back
 // does NOT require auth — that's the whole point: the person you share
 // a link with doesn't need a Strava account, let alone yours.
-router.post('/snapshots', requireAuth, (req, res) => {
+router.post('/snapshots', requireAuth, async (req, res) => {
   const { activity_id, name, sport_type, start_local, summary, perf, streams } = req.body || {};
   if (!activity_id || !streams || !streams.distance || !streams.time) {
     return res.status(400).json({ error: { code: 'bad_request', message: 'Missing activity data to snapshot.' } });
@@ -96,20 +96,20 @@ router.post('/snapshots', requireAuth, (req, res) => {
   if (sport_type && !isRunType(sport_type)) {
     return res.status(400).json({ error: { code: 'not_a_run', message: 'Only runs can be shared here.' } });
   }
-  const id = createSnapshot({
+  const id = await createSnapshot({
     activity_id, owner_athlete_id: req.athlete.id, name, sport_type, start_local, summary, perf, streams
   });
   res.json({ id });
 });
 
-router.get('/snapshots', (req, res) => {
+router.get('/snapshots', async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 10);
-  const found = ids.map(getSnapshot).filter(Boolean);
+  const found = (await Promise.all(ids.map(getSnapshot))).filter(Boolean);
   res.json({ snapshots: found });
 });
 
-router.get('/snapshots/:id', (req, res) => {
-  const snap = getSnapshot(req.params.id);
+router.get('/snapshots/:id', async (req, res) => {
+  const snap = await getSnapshot(req.params.id);
   if (!snap) return res.status(404).json({ error: { code: 'not_found', message: 'That shared run link doesn’t exist (or was mistyped).' } });
   res.json(snap);
 });

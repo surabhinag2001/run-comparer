@@ -97,18 +97,7 @@ public/
 test_e2e.py       Playwright end-to-end test (run against MOCK_STRAVA=1)
 ```
 
-## Notes on the split-pace math
 
-Kilometer splits are computed client-side from the raw distance/time/moving
-streams (Strava's own `laps` only reflect manually-pressed laps, not fixed
-1km splits). Split pace uses **moving time, not elapsed time** — a red
-light or water stop doesn't inflate a split's pace, because time spent with
-`moving:false` is excluded before computing pace. This only works
-accurately with **full-resolution** streams — an earlier version of this
-app (the claude.ai artifact this was built from) fetched streams capped at
-`resolution:200`, and Strava's downsampling at that resolution smooths
-right through short stops, badly undercounting stoppage. `strava.js`
-intentionally omits the `resolution` parameter to get full granularity.
 
 ## Running the test
 

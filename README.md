@@ -130,9 +130,3 @@ pip install playwright && playwright install chromium   # once
 MOCK_STRAVA=1 STRAVA_CLIENT_ID=x STRAVA_CLIENT_SECRET=x PORT=3417 node server/index.js &
 python3 test_e2e.py
 ```
-
-Exercises: logged-out state, mock login, run-type filtering in the picker
-and manual-add, the full comparison view (overview/splits/all three
-charts), creating a share link, and — the key scenario this app exists
-for — opening that share link in a brand-new browser context with no
-cookies at all and confirming the comparison still renders.

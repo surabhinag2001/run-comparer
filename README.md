@@ -3,7 +3,7 @@
 ## The story
 
 A friend of mine asked why Strava doesn't have a built-in way to compare
-two runs — and pointed out how ridiculous that is, for an app that's
+two runs and pointed out how ridiculous that is, for an app that's
 entirely about running. I didn't have a good answer. So I built it myself.
 
 ## What it does

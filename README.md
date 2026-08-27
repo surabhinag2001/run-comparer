@@ -15,8 +15,6 @@ Strava" login, nothing shared with you), picks their own runs, and can
 generate a link to share a comparison with someone else — the person opening
 that link doesn't need a Strava account at all to view it.
 
-This is a standalone Node.js + Express app, meant to be deployed somewhere
-you control rather than run inside claude.ai.
 
 ## Why it's built this way
 
